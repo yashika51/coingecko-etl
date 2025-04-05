@@ -13,33 +13,34 @@ import (
 	"coingecko-etl/internal/models"
 )
 
-// FetchMarketData fetches coin market data from the CoinGecko API
 func FetchMarketData() ([]models.CoinMarket, error) {
-	baseURL := os.Getenv("COINGECKO_API_URL")
-	vsCurrency := os.Getenv("VS_CURRENCY")
-	perPage := os.Getenv("PER_PAGE")
+	url := os.Getenv("COINGECKO_URL")
+	if url == "" {
+		url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
+	}
 
-	url := fmt.Sprintf("%s?vs_currency=%s&order=market_cap_desc&per_page=%s&page=1&sparkline=false",
-		baseURL, vsCurrency, perPage)
-
-	client := http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		log.Printf("ERROR: Failed to fetch data: %v", err)
+		log.Printf("ERROR: Failed to fetch data from API: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("ERROR: API responded with status: %s", resp.Status)
+		return nil, fmt.Errorf("API error: %s", resp.Status)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("ERROR: Failed to read response body: %v", err)
+		log.Printf("ERROR: Failed to read API response: %v", err)
 		return nil, err
 	}
 
 	var coins []models.CoinMarket
-	err = json.Unmarshal(body, &coins)
-	if err != nil {
-		log.Printf("ERROR: Failed to unmarshal JSON: %v", err)
+	if err := json.Unmarshal(body, &coins); err != nil {
+		log.Printf("ERROR: Failed to unmarshal API response: %v", err)
 		return nil, err
 	}
 
@@ -47,26 +48,22 @@ func FetchMarketData() ([]models.CoinMarket, error) {
 	return coins, nil
 }
 
-// SaveRawData writes the coin data to a timestamped JSON file under data/raw/
-func SaveRawData(coins []models.CoinMarket) error {
-	err := os.MkdirAll("data/raw", os.ModePerm)
-	if err != nil {
-		log.Printf("ERROR: Failed to create raw data directory: %v", err)
+func SaveRawData(data []models.CoinMarket) error {
+	if err := os.MkdirAll("data/raw", os.ModePerm); err != nil {
 		return err
 	}
+	timestamp := time.Now().Format("2006-01-02T15-04-05")
+	filename := filepath.Join("data/raw", fmt.Sprintf("market_%s.json", timestamp))
 
-	timestamp := time.Now().UTC().Format("2006-01-02T15-04-05")
-	filename := fmt.Sprintf("data/raw/market_%s.json", timestamp)
-
-	data, err := json.MarshalIndent(coins, "", "  ")
+	file, err := os.Create(filename)
 	if err != nil {
-		log.Printf("ERROR: Failed to marshal raw data: %v", err)
 		return err
 	}
+	defer file.Close()
 
-	err = os.WriteFile(filepath.Clean(filename), data, 0644)
-	if err != nil {
-		log.Printf("ERROR: Failed to write raw data file: %v", err)
+	enc := json.NewEncoder(file)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
 		return err
 	}
 
@@ -74,12 +71,33 @@ func SaveRawData(coins []models.CoinMarket) error {
 	return nil
 }
 
-// filter and reshape the raw coin data
-func TransformCoins(rawCoins []models.CoinMarket) []models.TransformedCoin {
-	var processed []models.TransformedCoin
+func SaveProcessedData(data []models.TransformedCoin) error {
+	if err := os.MkdirAll("data/processed", os.ModePerm); err != nil {
+		return err
+	}
+	timestamp := time.Now().Format("2006-01-02T15-04-05")
+	filename := filepath.Join("data/processed", fmt.Sprintf("market_%s.json", timestamp))
 
-	for _, coin := range rawCoins {
-		processed = append(processed, models.TransformedCoin{
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	enc := json.NewEncoder(file)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
+		return err
+	}
+
+	log.Printf("INFO: Saved processed data to %s", filename)
+	return nil
+}
+
+func TransformCoins(raw []models.CoinMarket) []models.TransformedCoin {
+	transformed := make([]models.TransformedCoin, 0, len(raw))
+	for _, coin := range raw {
+		transformed = append(transformed, models.TransformedCoin{
 			ID:           coin.ID,
 			Symbol:       coin.Symbol,
 			Name:         coin.Name,
@@ -89,31 +107,5 @@ func TransformCoins(rawCoins []models.CoinMarket) []models.TransformedCoin {
 			LastUpdated:  coin.LastUpdated,
 		})
 	}
-	return processed
-}
-
-func SaveProcessedData(coins []models.TransformedCoin) error {
-	err := os.MkdirAll("data/processed", os.ModePerm)
-	if err != nil {
-		log.Printf("ERROR: Failed to create processed data directory: %v", err)
-		return err
-	}
-
-	timestamp := time.Now().UTC().Format("2006-01-02T15-04-05")
-	filename := fmt.Sprintf("data/processed/market_%s.json", timestamp)
-
-	data, err := json.MarshalIndent(coins, "", "  ")
-	if err != nil {
-		log.Printf("ERROR: Failed to marshal processed data: %v", err)
-		return err
-	}
-
-	err = os.WriteFile(filepath.Clean(filename), data, 0644)
-	if err != nil {
-		log.Printf("ERROR: Failed to write processed data file: %v", err)
-		return err
-	}
-
-	log.Printf("INFO: Saved processed data to %s", filename)
-	return nil
+	return transformed
 }
