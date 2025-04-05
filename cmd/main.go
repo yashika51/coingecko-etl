@@ -17,5 +17,10 @@ func main() {
 		log.Fatalf("Failed to fetch market data: %v", err)
 	}
 
+	err = fetch.SaveRawData(coins)
+	if err != nil {
+		log.Fatalf("Failed to save raw data: %v", err)
+	}
+
 	log.Printf("First coin fetched: %+v", coins[0])
 }
