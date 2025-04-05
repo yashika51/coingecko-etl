@@ -1,33 +1,54 @@
 package main
 
 import (
-	"coingecko-etl/internal/fetch"
-	"github.com/joho/godotenv"
+	"context"
 	"log"
+	"os/signal"
+	"syscall"
+	"time"
+	"coingecko-etl/internal/fetch"
 )
 
-func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
+func runETL() {
 	coins, err := fetch.FetchMarketData()
 	if err != nil {
-		log.Fatalf("Failed to fetch market data: %v", err)
+		log.Printf("Failed to fetch market data: %v", err)
+		return
 	}
 
-	err = fetch.SaveRawData(coins)
-	if err != nil {
-		log.Fatalf("Failed to save raw data: %v", err)
+	if err := fetch.SaveRawData(coins); err != nil {
+		log.Printf("Failed to save raw data: %v", err)
 	}
 
 	transformed := fetch.TransformCoins(coins)
 
-	err = fetch.SaveProcessedData(transformed)
-	if err != nil {
-		log.Fatalf("Failed to save processed data: %v", err)
+	if err := fetch.SaveProcessedData(transformed); err != nil {
+		log.Printf("Failed to save processed data: %v", err)
 	}
 
-	log.Printf("First processed coin: %+v", transformed[0])
+	if err := fetch.SaveToPostgres(coins); err != nil {
+		log.Printf("Failed to save to Postgres: %v", err)
+	}
+
+	log.Printf("ETL completed for %d coins", len(transformed))
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	runETL()
+
+	for {
+		select {
+		case <-ticker.C:
+			runETL()
+		case <-ctx.Done():
+			log.Println("Shutdown signal received. Exiting ETL loop.")
+			return
+		}
+	}
 }
