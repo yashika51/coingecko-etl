@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
 	"coingecko-etl/internal/models"
+	"coingecko-etl/internal/monitoring"
 )
 
 func FetchMarketData() ([]models.CoinMarket, error) {
@@ -23,28 +23,34 @@ func FetchMarketData() ([]models.CoinMarket, error) {
 	resp, err := client.Get(url)
 	if err != nil {
 		log.Printf("ERROR: Failed to fetch data from API: %v", err)
+		monitoring.FetchFailure.Inc()
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("ERROR: API responded with status: %s", resp.Status)
+		monitoring.FetchFailure.Inc()
 		return nil, fmt.Errorf("API error: %s", resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("ERROR: Failed to read API response: %v", err)
+		monitoring.FetchFailure.Inc()
 		return nil, err
 	}
 
 	var coins []models.CoinMarket
 	if err := json.Unmarshal(body, &coins); err != nil {
 		log.Printf("ERROR: Failed to unmarshal API response: %v", err)
+		monitoring.FetchFailure.Inc()
 		return nil, err
 	}
 
 	log.Printf("INFO: Successfully fetched %d coin records", len(coins))
+	monitoring.FetchSuccess.Inc()
+	monitoring.RecordsProcessed.Add(float64(len(coins)))
 	return coins, nil
 }
 

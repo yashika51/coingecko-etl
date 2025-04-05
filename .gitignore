@@ -2,3 +2,4 @@
 .env
 data/raw/
 data/processed/
+logs/etl.log

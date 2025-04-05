@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"coingecko-etl/internal/fetch"
+	"coingecko-etl/internal/utils"
+	"coingecko-etl/internal/monitoring"
+	"github.com/joho/godotenv"
 	"log"
 	"os/signal"
 	"syscall"
 	"time"
-	"coingecko-etl/internal/fetch"
 )
 
 func runETL() {
@@ -34,6 +37,15 @@ func runETL() {
 }
 
 func main() {
+	utils.InitLogger()
+	monitoring.Init()
+	StartMetricsServer()
+
+
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
