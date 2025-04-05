@@ -22,5 +22,12 @@ func main() {
 		log.Fatalf("Failed to save raw data: %v", err)
 	}
 
-	log.Printf("First coin fetched: %+v", coins[0])
+	transformed := fetch.TransformCoins(coins)
+
+	err = fetch.SaveProcessedData(transformed)
+	if err != nil {
+		log.Fatalf("Failed to save processed data: %v", err)
+	}
+
+	log.Printf("First processed coin: %+v", transformed[0])
 }

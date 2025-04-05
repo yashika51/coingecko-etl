@@ -73,3 +73,47 @@ func SaveRawData(coins []models.CoinMarket) error {
 	log.Printf("INFO: Saved raw data to %s", filename)
 	return nil
 }
+
+// filter and reshape the raw coin data
+func TransformCoins(rawCoins []models.CoinMarket) []models.TransformedCoin {
+	var processed []models.TransformedCoin
+
+	for _, coin := range rawCoins {
+		processed = append(processed, models.TransformedCoin{
+			ID:           coin.ID,
+			Symbol:       coin.Symbol,
+			Name:         coin.Name,
+			CurrentPrice: coin.CurrentPrice,
+			MarketCap:    coin.MarketCap,
+			TotalVolume:  coin.TotalVolume,
+			LastUpdated:  coin.LastUpdated,
+		})
+	}
+	return processed
+}
+
+func SaveProcessedData(coins []models.TransformedCoin) error {
+	err := os.MkdirAll("data/processed", os.ModePerm)
+	if err != nil {
+		log.Printf("ERROR: Failed to create processed data directory: %v", err)
+		return err
+	}
+
+	timestamp := time.Now().UTC().Format("2006-01-02T15-04-05")
+	filename := fmt.Sprintf("data/processed/market_%s.json", timestamp)
+
+	data, err := json.MarshalIndent(coins, "", "  ")
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal processed data: %v", err)
+		return err
+	}
+
+	err = os.WriteFile(filepath.Clean(filename), data, 0644)
+	if err != nil {
+		log.Printf("ERROR: Failed to write processed data file: %v", err)
+		return err
+	}
+
+	log.Printf("INFO: Saved processed data to %s", filename)
+	return nil
+}
